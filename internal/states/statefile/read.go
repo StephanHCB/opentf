@@ -12,6 +12,7 @@ import (
 
 	version "github.com/hashicorp/go-version"
 
+	"github.com/opentofu/opentofu/internal/states/statecrypto"
 	"github.com/opentofu/opentofu/internal/tfdiags"
 	tfversion "github.com/opentofu/opentofu/version"
 )
@@ -73,7 +74,17 @@ func Read(r io.Reader) (*File, error) {
 		return nil, ErrNoState
 	}
 
-	state, err := readState(src)
+	decrypted, err := statecrypto.DecryptStateFile(src)
+	if err != nil {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"Failed to decrypt state file contents",
+			fmt.Sprintf("state decryption failed: %s", err),
+		))
+		return nil, err
+	}
+
+	state, err := readState(decrypted)
 	if err != nil {
 		return nil, err
 	}
