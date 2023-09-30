@@ -13,6 +13,7 @@ import (
 
 	"github.com/opentofu/opentofu/internal/backend/local"
 	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statecrypto"
 	"github.com/opentofu/opentofu/internal/states/statefile"
 	"github.com/opentofu/opentofu/internal/states/statemgr"
 	"github.com/opentofu/opentofu/internal/tofu"
@@ -148,7 +149,13 @@ func (s *State) refreshState() error {
 		return nil
 	}
 
-	stateFile, err := statefile.Read(bytes.NewReader(payload.Data))
+	decrypted, err := statecrypto.DecryptRemoteState(payload.Data)
+	if err != nil {
+		log.Printf("[ERROR] remote state decryption failed: %s", err.Error())
+		return err
+	}
+
+	stateFile, err := statefile.Read(bytes.NewReader(decrypted))
 	if err != nil {
 		return err
 	}
@@ -210,7 +217,13 @@ func (s *State) PersistState(schemas *tofu.Schemas) error {
 		return err
 	}
 
-	err = s.Client.Put(buf.Bytes())
+	maybeEncrypted, err := statecrypto.EncryptRemoteState(buf.Bytes())
+	if err != nil {
+		log.Printf("[ERROR] remote state encryption failed: %s", err.Error())
+		return err
+	}
+
+	err = s.Client.Put(maybeEncrypted)
 	if err != nil {
 		return err
 	}

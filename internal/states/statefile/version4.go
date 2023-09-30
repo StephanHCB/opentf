@@ -17,6 +17,7 @@ import (
 	"github.com/opentofu/opentofu/internal/checks"
 	"github.com/opentofu/opentofu/internal/lang/marks"
 	"github.com/opentofu/opentofu/internal/states"
+	"github.com/opentofu/opentofu/internal/states/statecrypto"
 	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
@@ -433,7 +434,17 @@ func writeStateV4(file *File, w io.Writer) tfdiags.Diagnostics {
 	}
 	src = append(src, '\n')
 
-	_, err = w.Write(src)
+	maybeEncrypted, err := statecrypto.EncryptStateFile(src)
+	if err != nil {
+		diags = diags.Append(tfdiags.Sourceless(
+			tfdiags.Error,
+			"Failed to encrypt state file contents",
+			fmt.Sprintf("state encryption failed: %s", err),
+		))
+		return diags
+	}
+
+	_, err = w.Write(maybeEncrypted)
 	if err != nil {
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Error,
