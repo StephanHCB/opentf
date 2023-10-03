@@ -1,11 +1,14 @@
 package aes256state
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/opentofu/opentofu/internal/states/statecrypto/cryptoconfig"
 	"io"
@@ -13,7 +16,7 @@ import (
 	"regexp"
 )
 
-const ClientSide_Aes256cfb_Sha256 = "client-side/AES256-CFB/SHA256"
+const ClientSide_Aes256cfb_Sha256 = "encrypt/AES256-CFB/SHA256"
 
 func Metadata() cryptoconfig.MethodMetadata {
 	return cryptoconfig.MethodMetadata{
@@ -22,7 +25,10 @@ func Metadata() cryptoconfig.MethodMetadata {
 	}
 }
 
-func constructor(configuration cryptoconfig.Config) (cryptoconfig.Method, error) {
+func constructor(configuration cryptoconfig.Config, next cryptoconfig.Method) (cryptoconfig.Method, error) {
+	if next != nil {
+		return nil, fmt.Errorf("invalid configuration, %s must be used last in the list of methods", ClientSide_Aes256cfb_Sha256)
+	}
 	return &AES256CFBMethod{}, nil
 }
 
@@ -54,45 +60,65 @@ func parseKeyFromConfiguration(config cryptoconfig.Config) ([]byte, error) {
 	return key, nil
 }
 
-// determine if data (which is a []byte containing a json structure) is encrypted, that is, of the following form:
-//
-//	{"crypted":"<hex containing iv and payload>"}
 func (a *AES256CFBMethod) isEncrypted(data []byte) bool {
-	validator := regexp.MustCompile(`^{"crypted":".*$`)
+	validator := regexp.MustCompile(`^{"method":"[^"]*","payload":.*$`)
 	return validator.Match(data)
 }
 
-func (a *AES256CFBMethod) isSyntacticallyValidEncrypted(data []byte) bool {
-	validator := regexp.MustCompile(`^{"crypted":"[0-9a-f]+"}$`)
-	return validator.Match(data)
+type Aes256CfbWrapper struct {
+	Method  string `json:"method"`
+	Payload string `json:"payload"`
+}
+
+func jsonToWrapper(raw []byte) *Aes256CfbWrapper {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+
+	result := &Aes256CfbWrapper{}
+	err := decoder.Decode(result)
+	if err != nil {
+		log.Print("[TRACE] failed to decode json input into Aes256CfbWrapper, probably not encrypted - continuing")
+		return nil
+	}
+	return result
 }
 
 func (a *AES256CFBMethod) decodeFromEncryptedJsonWithChecks(jsonCryptedData []byte) ([]byte, error) {
-	if !a.isSyntacticallyValidEncrypted(jsonCryptedData) {
-		return []byte{}, fmt.Errorf("ciphertext contains invalid characters, possibly cut off or garbled")
+	wrapper := jsonToWrapper(jsonCryptedData)
+	if wrapper == nil {
+		log.Printf("[WARN] found state that was not encoded with this method, transparently reading it anyway")
+		return jsonCryptedData, nil
+	}
+	if wrapper.Method != ClientSide_Aes256cfb_Sha256 {
+		return []byte{}, fmt.Errorf("found state that was encoded with method %s, not %s", wrapper.Method, ClientSide_Aes256cfb_Sha256)
 	}
 
-	// extract the hex part only, cutting off {"crypted":" (12 characters) and "} (2 characters)
-	src := jsonCryptedData[12 : len(jsonCryptedData)-2]
+	if len(wrapper.Payload)%2 != 0 {
+		return []byte{}, errors.New("ciphertext contains odd number of characters, possibly cut off or garbled")
+	}
 
-	ciphertext := make([]byte, hex.DecodedLen(len(src)))
-	n, err := hex.Decode(ciphertext, src)
+	ciphertext := make([]byte, hex.DecodedLen(len(wrapper.Payload)))
+	n, err := hex.Decode(ciphertext, []byte(wrapper.Payload))
 	if err != nil {
-		return []byte{}, err
+		log.Printf("[TRACE] ciphertext contains invalid characters: %s", err.Error())
+		return []byte{}, errors.New("ciphertext contains invalid characters, possibly cut off or garbled")
 	}
-	if n != hex.DecodedLen(len(src)) {
+	if n != hex.DecodedLen(len(wrapper.Payload)) {
 		return []byte{}, fmt.Errorf("did not fully decode, only read %d characters before encountering an error", n)
 	}
 	return ciphertext, nil
 }
 
 func (a *AES256CFBMethod) encodeToEncryptedJson(ciphertext []byte) []byte {
-	prefix := []byte(`{"crypted":"`)
-	postfix := []byte(`"}`)
 	encryptedHex := make([]byte, hex.EncodedLen(len(ciphertext)))
 	_ = hex.Encode(encryptedHex, ciphertext)
 
-	return append(append(prefix, encryptedHex...), postfix...)
+	wrapper := &Aes256CfbWrapper{
+		Method:  ClientSide_Aes256cfb_Sha256,
+		Payload: string(encryptedHex),
+	}
+	result, _ := json.Marshal(wrapper)
+	return result
 }
 
 func (a *AES256CFBMethod) attemptDecryption(jsonCryptedData []byte, key []byte) ([]byte, error) {
@@ -155,8 +181,6 @@ func (a *AES256CFBMethod) attemptEncryption(plaintextPayload []byte, key []byte)
 
 // Encrypt data (which is a []byte containing a json structure) into a json structure
 //
-//	{"crypted":"<hex-encoded random iv + hex-encoded CFB encrypted data including hash>"}
-//
 // fail if encryption is not possible to prevent writing unencrypted state
 func (a *AES256CFBMethod) Encrypt(plaintextPayload []byte, config cryptoconfig.Config) ([]byte, cryptoconfig.Config, error) {
 	key, err := parseKeyFromConfiguration(config)
@@ -172,8 +196,6 @@ func (a *AES256CFBMethod) Encrypt(plaintextPayload []byte, config cryptoconfig.C
 }
 
 // Decrypt the hex-encoded contents of data, which is expected to be of the form
-//
-//	{"crypted":"<hex containing iv and payload>"}
 //
 // supports reading unencrypted state as well but logs a warning
 func (a *AES256CFBMethod) Decrypt(data []byte, config cryptoconfig.Config) ([]byte, cryptoconfig.Config, error) {

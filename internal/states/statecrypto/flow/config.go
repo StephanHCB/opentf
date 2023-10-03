@@ -34,16 +34,14 @@ func EnabledForPlanFile(config cryptoconfig.Config) bool {
 // constructor functions defined in the metadata of the listed methods.
 //
 // This will typically also validate static parameters, but not dynamic parameters such as keys.
-func buildMethodStack(config cryptoconfig.Config) ([]cryptoconfig.Method, error) {
-	result := make([]cryptoconfig.Method, 0)
-	for _, name := range config.Methods {
-		method, err := methods.MethodByName(name, config)
+func buildMethodStack(config cryptoconfig.Config) (current cryptoconfig.Method, err error) {
+	for i := len(config.Methods) - 1; i >= 0; i-- {
+		current, err = methods.MethodByName(config.Methods[i], config, current)
 		if err != nil {
-			return result, err
+			return nil, err
 		}
-		result = append(result, method)
 	}
-	return result, nil
+	return current, nil
 }
 
 func configFromEnv(envName string) (cryptoconfig.Config, error) {

@@ -45,5 +45,12 @@ type MethodMetadata struct {
 	//
 	// You can reject invalid configurations here, but if you want another method to be
 	// able to provide a configuration value, then you should not check it during the construction phase.
-	Constructor func(Config) (Method, error)
+	// Example: it would be wrong to check that the configuration provides the encryption key,
+	// because that may be provided by a method further up in the stack.
+	//
+	// nextInStack is the next method in the stack, or nil if this method is the last
+	// in the stack. If your method expects to be the last in the stack, you should
+	// return an error if nextInStack is not nil. Similarly, if your method is for key derivation,
+	// you should return a meaningful error if nextInStack is nil.
+	Constructor func(configuration Config, nextInStack Method) (Method, error)
 }

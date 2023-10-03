@@ -38,11 +38,7 @@ func attemptEncryption(stateJson []byte, config cryptoconfig.Config) ([]byte, er
 		return stateJson, err
 	}
 
-	for _, method := range stack {
-		stateJson, config, err = method.Encrypt(stateJson, config)
-		if err != nil {
-			return stateJson, err
-		}
-	}
-	return stateJson, nil
+	stateJson, _, err = stack.Encrypt(stateJson, config)
+
+	return stateJson, err
 }

@@ -14,8 +14,9 @@ type Config struct {
 	// Methods selects the methods to place in the encryption stack
 	//
 	// supported values are
-	//   "client-side/AES256-CFB/SHA256"
-	//   ...
+	//   "encrypt/AES256-CFB/SHA256"
+	//   "derive-key/PBKDF2/AES256"
+	//   ... (see the constants at the top of each method implementation)
 	//
 	// supplying an unsupported value raises an error.
 	//
