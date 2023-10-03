@@ -66,11 +66,7 @@ func attemptDecryption(stateJson []byte, config cryptoconfig.Config) ([]byte, er
 		return stateJson, err
 	}
 
-	for _, method := range stack {
-		stateJson, config, err = method.Decrypt(stateJson, config)
-		if err != nil {
-			return stateJson, err
-		}
-	}
-	return stateJson, nil
+	stateJson, _, err = stack.Decrypt(stateJson, config)
+
+	return stateJson, err
 }

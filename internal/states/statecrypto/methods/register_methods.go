@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/opentofu/opentofu/internal/states/statecrypto/cryptoconfig"
 	aes256state "github.com/opentofu/opentofu/internal/states/statecrypto/methods/aes256-cfb-sha256"
+	pbkdf2aes256key "github.com/opentofu/opentofu/internal/states/statecrypto/methods/pbkdf2-passphrase-to-aes256key"
 	"log"
 )
 
@@ -22,7 +23,8 @@ func EnsureMethodsRegistered() {
 
 	err := registerMethods(
 		aes256state.Metadata,
-		// register other state encryption methods here
+		pbkdf2aes256key.Metadata,
+		// register other encryption/key derivation methods here
 	)
 
 	if err != nil {
@@ -46,7 +48,7 @@ func registerMethods(methodsToRegister ...func() cryptoconfig.MethodMetadata) er
 	return nil
 }
 
-func MethodByName(name string, config cryptoconfig.Config) (cryptoconfig.Method, error) {
+func MethodByName(name string, config cryptoconfig.Config, next cryptoconfig.Method) (cryptoconfig.Method, error) {
 	metadata, ok := methodMetadata[name]
 	if !ok {
 		return nil, fmt.Errorf("invalid configuration, encryption method '%s' is unknown", name)
@@ -54,5 +56,5 @@ func MethodByName(name string, config cryptoconfig.Config) (cryptoconfig.Method,
 	if metadata.Constructor == nil {
 		return nil, fmt.Errorf("encryption method '%s' does not define a constructor - this is an implementation bug", name)
 	}
-	return metadata.Constructor(config)
+	return metadata.Constructor(config, next)
 }

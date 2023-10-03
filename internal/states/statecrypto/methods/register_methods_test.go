@@ -17,7 +17,7 @@ func TestMethodByName_Invalid(t *testing.T) {
 	if err != nil {
 		t.Error("unexpected error")
 	}
-	_, err = MethodByName("funny", cryptoconfig.Config{})
+	_, err = MethodByName("funny", cryptoconfig.Config{}, nil)
 	if err == nil || err.Error() != "encryption method 'funny' does not define a constructor - this is an implementation bug" {
 		t.Error("missing or wrong error")
 	}
@@ -26,7 +26,7 @@ func TestMethodByName_Invalid(t *testing.T) {
 func metadataValid() cryptoconfig.MethodMetadata {
 	return cryptoconfig.MethodMetadata{
 		Name: "duplicate",
-		Constructor: func(cryptoconfig.Config) (cryptoconfig.Method, error) {
+		Constructor: func(cryptoconfig.Config, cryptoconfig.Method) (cryptoconfig.Method, error) {
 			return nil, nil
 		},
 	}
