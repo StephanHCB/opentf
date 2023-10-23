@@ -60,37 +60,32 @@ func parseKeyFromConfiguration(config cryptoconfig.Config) ([]byte, error) {
 	return key, nil
 }
 
-func (a *AES256CFBMethod) isEncrypted(data []byte) bool {
-	validator := regexp.MustCompile(`^{"method":"[^"]*","payload":.*$`)
-	return validator.Match(data)
-}
-
 type Aes256CfbWrapper struct {
-	Method  string `json:"method"`
-	Payload string `json:"payload"`
+	Encryption cryptoconfig.EncryptionInfo `json:"encryption"`
+	Payload    string                      `json:"payload"`
 }
 
-func jsonToWrapper(raw []byte) *Aes256CfbWrapper {
+func jsonToWrapper(raw []byte) (*Aes256CfbWrapper, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 
 	result := &Aes256CfbWrapper{}
 	err := decoder.Decode(result)
 	if err != nil {
-		log.Print("[TRACE] failed to decode json input into Aes256CfbWrapper, probably not encrypted - continuing")
-		return nil
+		log.Print("[TRACE] failed to decode json input into Aes256CfbWrapper, probably not encrypted, or not with this method")
 	}
-	return result
+	return result, err
 }
 
 func (a *AES256CFBMethod) decodeFromEncryptedJsonWithChecks(jsonCryptedData []byte) ([]byte, error) {
-	wrapper := jsonToWrapper(jsonCryptedData)
-	if wrapper == nil {
-		log.Printf("[WARN] found state that was not encoded with this method, transparently reading it anyway")
-		return jsonCryptedData, nil
+	wrapper, err := jsonToWrapper(jsonCryptedData)
+	if err != nil {
+		log.Printf("[TRACE] found state that was not encoded with this method, failing")
+		return []byte{}, fmt.Errorf("found state that was not encrypted with %s, failing", ClientSide_Aes256cfb_Sha256)
 	}
-	if wrapper.Method != ClientSide_Aes256cfb_Sha256 {
-		return []byte{}, fmt.Errorf("found state that was encoded with method %s, not %s", wrapper.Method, ClientSide_Aes256cfb_Sha256)
+	_, ok := wrapper.Encryption.Methods[ClientSide_Aes256cfb_Sha256]
+	if !ok {
+		return []byte{}, fmt.Errorf("found state that was not encrypted with %s, failing", ClientSide_Aes256cfb_Sha256)
 	}
 
 	if len(wrapper.Payload)%2 != 0 {
@@ -113,9 +108,15 @@ func (a *AES256CFBMethod) encodeToEncryptedJson(ciphertext []byte) []byte {
 	encryptedHex := make([]byte, hex.EncodedLen(len(ciphertext)))
 	_ = hex.Encode(encryptedHex, ciphertext)
 
+	encryptionInfo := cryptoconfig.EncryptionInfo{
+		Version: 1,
+		Methods: make(map[string]interface{}),
+	}
+	encryptionInfo.Methods[ClientSide_Aes256cfb_Sha256] = make(map[string]interface{})
+
 	wrapper := &Aes256CfbWrapper{
-		Method:  ClientSide_Aes256cfb_Sha256,
-		Payload: string(encryptedHex),
+		Encryption: encryptionInfo,
+		Payload:    string(encryptedHex),
 	}
 	result, _ := json.Marshal(wrapper)
 	return result
@@ -179,7 +180,7 @@ func (a *AES256CFBMethod) attemptEncryption(plaintextPayload []byte, key []byte)
 	return a.encodeToEncryptedJson(ciphertext), nil
 }
 
-// Encrypt data (which is a []byte containing a json structure) into a json structure
+// Encrypt data (which is a []byte containing a json structure) into a json structure.
 //
 // fail if encryption is not possible to prevent writing unencrypted state
 func (a *AES256CFBMethod) Encrypt(plaintextPayload []byte, config cryptoconfig.Config) ([]byte, cryptoconfig.Config, error) {
@@ -195,23 +196,18 @@ func (a *AES256CFBMethod) Encrypt(plaintextPayload []byte, config cryptoconfig.C
 	return encrypted, config, nil
 }
 
-// Decrypt the hex-encoded contents of data, which is expected to be of the form
+// Decrypt the contents of data.
 //
-// supports reading unencrypted state as well but logs a warning
+// fail if data does not have the expected format
 func (a *AES256CFBMethod) Decrypt(data []byte, config cryptoconfig.Config) ([]byte, cryptoconfig.Config, error) {
-	if a.isEncrypted(data) {
-		key, err := parseKeyFromConfiguration(config)
-		if err != nil {
-			return []byte{}, config, err
-		}
-
-		candidate, err := a.attemptDecryption(data, key)
-		if err != nil {
-			return []byte{}, config, err
-		}
-		return candidate, config, nil
-	} else {
-		log.Printf("[WARN] found unencrypted state, transparently reading it anyway")
-		return data, config, nil
+	key, err := parseKeyFromConfiguration(config)
+	if err != nil {
+		return []byte{}, config, err
 	}
+
+	candidate, err := a.attemptDecryption(data, key)
+	if err != nil {
+		return []byte{}, config, err
+	}
+	return candidate, config, nil
 }

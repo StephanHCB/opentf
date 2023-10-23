@@ -7,24 +7,19 @@ package cryptoconfig
 //
 // Note that the encrypted payload must still be valid json, because some remote state backends
 // expect valid json.
-//
-// Also note that all implementations must gracefully handle unencrypted state being passed into Decrypt(),
-// because this will inevitably happen when first encrypting previously unencrypted state. You should log a
-// warning, though. As a consequence, you will need a way to recognize that you are looking at encrypted
-// state vs. unencrypted state.
 type Method interface {
-	// Decrypt the state if encrypted, otherwise pass through unmodified.
+	// Decrypt the state or plan.
 	//
-	// encryptedPayload is a json document passed in as a []byte.
+	// payload is a json document passed in as a []byte.
 	//
 	// if you do not return an error, you must ensure you return a json document as a []byte
 	// and a valid (potentially expanded) configuration that will be used for the next
 	// method in the stack.
 	Decrypt(payload []byte, configuration Config) ([]byte, Config, error)
 
-	// Encrypt the plaintext state.
+	// Encrypt the plaintext state or plan.
 	//
-	// plaintextPayload is a json document passed in as a []byte.
+	// payload is a json document passed in as a []byte.
 	//
 	// if you do not return an error, you must ensure you return a json document as
 	// a []byte, because some remote state storage backends rely on this,
@@ -53,4 +48,14 @@ type MethodMetadata struct {
 	// return an error if nextInStack is not nil. Similarly, if your method is for key derivation,
 	// you should return a meaningful error if nextInStack is nil.
 	Constructor func(configuration Config, nextInStack Method) (Method, error)
+}
+
+// EncryptionInfo is added to encrypted state or plans under "encryption".
+type EncryptionInfo struct {
+	// Version is currently always 1.
+	Version int `json:"version"`
+
+	// Methods tracks which methods were used to encrypt this state or plan. The values are
+	// method dependent.
+	Methods map[string]interface{} `json:"methods"`
 }
