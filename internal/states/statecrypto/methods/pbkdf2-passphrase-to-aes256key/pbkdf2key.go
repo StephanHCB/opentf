@@ -1,7 +1,6 @@
 package pbkdf2aes256key
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha512"
 	"encoding/hex"
@@ -36,9 +35,7 @@ type Pbkdf2Method struct {
 }
 
 type Pbkdf2Wrapper struct {
-	Method  string          `json:"method"`
-	Payload json.RawMessage `json:"payload"`
-	Salt    string          `json:"salt"`
+	Encryption cryptoconfig.EncryptionInfo `json:"encryption"`
 }
 
 func passphraseFromConfiguration(config cryptoconfig.Config) (string, error) {
@@ -54,21 +51,61 @@ func passphraseFromConfiguration(config cryptoconfig.Config) (string, error) {
 	return passphrase, nil
 }
 
-func jsonToWrapper(raw []byte) *Pbkdf2Wrapper {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-
-	result := &Pbkdf2Wrapper{}
-	err := decoder.Decode(result)
+func extractSalt(rawJson []byte) (string, error) {
+	wrapper := Pbkdf2Wrapper{}
+	err := json.Unmarshal(rawJson, &wrapper)
 	if err != nil {
-		log.Print("[TRACE] failed to decode json input into Pbkdf2Wrapper, probably not encrypted - continuing")
-		return nil
+		log.Print("[TRACE] failed to decode json input into Pbkdf2Wrapper, probably not encrypted")
+		return "", fmt.Errorf("found state that was not encrypted with %s", Pbkdf2_Aes256key)
 	}
-	return result
+
+	methodInfoRaw, ok := wrapper.Encryption.Methods[Pbkdf2_Aes256key]
+	if !ok {
+		log.Printf("[TRACE] failed to find %s among methods", Pbkdf2_Aes256key)
+		return "", fmt.Errorf("found state that was not encrypted with %s", Pbkdf2_Aes256key)
+	}
+	methodInfo, ok := methodInfoRaw.(map[string]interface{})
+	if !ok {
+		log.Printf("[TRACE] failed to convert methods to json object")
+		return "", fmt.Errorf("found state that was not encrypted with %s", Pbkdf2_Aes256key)
+	}
+	saltRaw, ok := methodInfo["salt"]
+	if !ok {
+		log.Printf("[TRACE] field 'salt' not present")
+		return "", fmt.Errorf("found no salt in state")
+	}
+	saltHex, ok := saltRaw.(string)
+	if !ok {
+		log.Printf("[TRACE] field 'salt' was not of type string")
+		return "", fmt.Errorf("found no salt in state")
+	}
+
+	return saltHex, nil
 }
 
-func wrapperToJson(wrapper *Pbkdf2Wrapper) ([]byte, error) {
-	return json.Marshal(wrapper)
+func wrapWithSaltAsJson(saltHex string, payload []byte) ([]byte, error) {
+	everything := make(map[string]interface{})
+	err := json.Unmarshal(payload, &everything)
+	if err != nil {
+		return []byte{}, fmt.Errorf("failed to decode full input to wrap")
+	}
+
+	wrapper := Pbkdf2Wrapper{}
+	err = json.Unmarshal(payload, &wrapper)
+	if err != nil {
+		return []byte{}, fmt.Errorf("failed to decode encryption info input to wrap")
+	}
+
+	if wrapper.Encryption.Methods == nil {
+		wrapper.Encryption.Methods = make(map[string]interface{})
+	}
+	wrapper.Encryption.Methods[Pbkdf2_Aes256key] = map[string]interface{}{
+		"salt": saltHex,
+	}
+
+	everything["encryption"] = wrapper.Encryption
+
+	return json.Marshal(everything)
 }
 
 func parseSalt(hexValue string) ([]byte, error) {
@@ -90,14 +127,9 @@ func encodeKey(raw []byte) string {
 }
 
 func (m *Pbkdf2Method) Decrypt(data []byte, config cryptoconfig.Config) ([]byte, cryptoconfig.Config, error) {
-	wrapper := jsonToWrapper(data)
-	if wrapper == nil {
-		log.Printf("[WARN] found state that was not encoded with this method, transparently reading it anyway")
-		return data, config, nil
-	}
-	if wrapper.Method != Pbkdf2_Aes256key {
-		// could be the primary configuration when fallback configuration is needed
-		return data, config, fmt.Errorf("found state that was encoded with method %s, not %s", wrapper.Method, Pbkdf2_Aes256key)
+	saltStr, err := extractSalt(data)
+	if err != nil {
+		return []byte{}, config, err
 	}
 
 	passphrase, err := passphraseFromConfiguration(config)
@@ -105,7 +137,7 @@ func (m *Pbkdf2Method) Decrypt(data []byte, config cryptoconfig.Config) ([]byte,
 		return []byte{}, config, err
 	}
 
-	salt, err := parseSalt(wrapper.Salt)
+	salt, err := parseSalt(saltStr)
 	if err != nil {
 		return []byte{}, config, err
 	}
@@ -114,7 +146,7 @@ func (m *Pbkdf2Method) Decrypt(data []byte, config cryptoconfig.Config) ([]byte,
 
 	config.Parameters["key"] = encodeKey(key)
 
-	return m.Next.Decrypt(wrapper.Payload, config)
+	return m.Next.Decrypt(data, config)
 }
 
 func (m *Pbkdf2Method) Encrypt(data []byte, config cryptoconfig.Config) ([]byte, cryptoconfig.Config, error) {
@@ -137,11 +169,7 @@ func (m *Pbkdf2Method) Encrypt(data []byte, config cryptoconfig.Config) ([]byte,
 		return []byte{}, config, err
 	}
 
-	resultJson, err := wrapperToJson(&Pbkdf2Wrapper{
-		Method:  Pbkdf2_Aes256key,
-		Payload: encryptedPayload,
-		Salt:    encodeSalt(salt),
-	})
+	resultJson, err := wrapWithSaltAsJson(encodeSalt(salt), encryptedPayload)
 
 	return resultJson, config, err
 }

@@ -14,12 +14,12 @@ const tooLongKey = "a0a1a2a3a4a5a6a7a8a9b0b1b2b3b4b5b6b7b8b9c0c1c2c3c4c5c6c7c8c9
 const invalidChars = "somethingsomethinga9b0b1b2b3b4b5b6b7b8b9c0c1c2c3c4c5c6c7c8c9d0d1"
 
 const validPlaintext = `{"animals":[{"species":"cheetah","genus":"acinonyx"}]}`
-const validEncryptedKey1 = `{"method":"encrypt/AES256-CFB/SHA256","payload":"e93e3e7ad3434055251f695865a13c11744b97e54cb7dee8f8fb40d1fb096b728f2a00606e7109f0720aacb15008b410cf2f92dd7989c2ff10b9712b6ef7d69ecdad1dccd2f1bddd127f0f0d87c79c3c062e03c2297614e2effa2fb1f4072d86df0dda4fc061"}`
-const invalidEncryptedHash = `{"method":"encrypt/AES256-CFB/SHA256","payload":"a6625332f6e3061e1202cea86d2ddf7cf6d5f296a9856fe989cd20b18c8522f670d368f523481876bb2b98eea1e8cf845b4e003de11153bc47b884ce907b1e6a075f515ddd2aa4fbdbc7bbab1b411e153d164f84990e9c6fa82d7cacde7401546b47b2f30000"}`
-const invalidEncryptedCutoff = `{"method":"encrypt/AES256-CFB/SHA256","payload":"447c2fc8982ed203681298be9f1b03ed30dbfe794a68e4ad873fb68c34f10394ffddd9c76b2d3fdb006d75068453854af63766fc059a569d243eb7d8c92ec3a00535ccaab769bdafb534d5471ed01ca36f640d1f`
-const invalidEncryptedChars = `{"method":"encrypt/AES256-CFB/SHA256","payload":"447c2fc8982ed203681298be9f1b03ed30dbfe794a68e4ad873fb68c34 SOMETHING WEIRD d3fdb006d75068453854af63766fc059a569d243eb7d8c92ec3a00535ccaab769bdafb534d5471ed01ca36f640d1f720c9a2bf0aa4e0a40496dacee92325a9f86"}`
-const invalidEncryptedTooShort = `{"method":"encrypt/AES256-CFB/SHA256","payload":"a6625332"}`
-const invalidEncryptedOddNumberCharacters = `{"method":"encrypt/AES256-CFB/SHA256","payload":"e93e3e7ad3434055251f695865a13c11744b97e54cb7dee8f8fb40d1fb096b728f2a00606e7109f0720aacb15008b410cf2f92dd7989c2ff10b9712b6ef7d69ecdad1dccd2f1bddd127f0f0d87c79c3c062e03c2297614e2effa2fb1f4072d86df0dda4fc06"}`
+const validEncryptedKey1 = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"e93e3e7ad3434055251f695865a13c11744b97e54cb7dee8f8fb40d1fb096b728f2a00606e7109f0720aacb15008b410cf2f92dd7989c2ff10b9712b6ef7d69ecdad1dccd2f1bddd127f0f0d87c79c3c062e03c2297614e2effa2fb1f4072d86df0dda4fc061"}`
+const invalidEncryptedHash = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"a6625332f6e3061e1202cea86d2ddf7cf6d5f296a9856fe989cd20b18c8522f670d368f523481876bb2b98eea1e8cf845b4e003de11153bc47b884ce907b1e6a075f515ddd2aa4fbdbc7bbab1b411e153d164f84990e9c6fa82d7cacde7401546b47b2f30000"}`
+const invalidEncryptedCutoff = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"447c2fc8982ed203681298be9f1b03ed30dbfe794a68e4ad873fb68c34f10394ffddd9c76b2d3fdb006d75068453854af63766fc059a569d243eb7d8c92ec3a00535ccaab769bdafb534d5471ed01ca36f640d1f"}`
+const invalidEncryptedChars = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"447c2fc8982ed203681298be9f1b03ed30dbfe794a68e4ad873fb68c34 SOMETHING WEIRD d3fdb006d75068453854af63766fc059a569d243eb7d8c92ec3a00535ccaab769bdafb534d5471ed01ca36f640d1f720c9a2bf0aa4e0a40496dacee92325a9f86"}`
+const invalidEncryptedTooShort = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"a6625332"}`
+const invalidEncryptedOddNumberCharacters = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"e93e3e7ad3434055251f695865a13c11744b97e54cb7dee8f8fb40d1fb096b728f2a00606e7109f0720aacb15008b410cf2f92dd7989c2ff10b9712b6ef7d69ecdad1dccd2f1bddd127f0f0d87c79c3c062e03c2297614e2effa2fb1f4072d86df0dda4fc06"}`
 
 type parseKeyTestCase struct {
 	description   string
@@ -145,14 +145,15 @@ func TestEncryptDecrypt(t *testing.T) {
 			configuration: conf(validKey1),
 			input:         validPlaintext,
 		},
-		{
-			description:   "standard work on unencrypted data",
-			configuration: conf(validKey1),
-			input:         validPlaintext,
-			injectOutput:  validPlaintext,
-		},
 
 		// error cases
+		{
+			description:      "fails for unencrypted data",
+			configuration:    conf(validKey1),
+			input:            validPlaintext,
+			injectOutput:     validPlaintext,
+			expectedDecError: "found state that was not encrypted with encrypt/AES256-CFB/SHA256, failing",
+		},
 		{
 			description:      "invalid hash received on decrypt",
 			configuration:    conf(validKey1),

@@ -45,8 +45,8 @@ const validConfigWithPassphrase1 = `{"encrypt_remote_state":true,"methods":["der
 const validConfigWithPassphrase2 = `{"encrypt_remote_state":true,"methods":["derive-key/PBKDF2/AES256","encrypt/AES256-CFB/SHA256"],"parameters":{"passphrase":"this is demo passphrase 2"}}`
 
 const validPlaintext = `{"animals":[{"species":"cheetah","genus":"acinonyx"}]}`
-const validEncryptedKey1 = `{"method":"encrypt/AES256-CFB/SHA256","payload":"e93e3e7ad3434055251f695865a13c11744b97e54cb7dee8f8fb40d1fb096b728f2a00606e7109f0720aacb15008b410cf2f92dd7989c2ff10b9712b6ef7d69ecdad1dccd2f1bddd127f0f0d87c79c3c062e03c2297614e2effa2fb1f4072d86df0dda4fc061"}`
-const validEncryptedPassphrase1 = `{"method":"derive-key/PBKDF2/AES256","payload":{"method":"encrypt/AES256-CFB/SHA256","payload":"226ba6151c7751f2bd2ffcc2f666397f0cf8f6ea8ac2e336d7f3e07c8b8145f7e317f70a6bf4478b3c4469189ba1daccfe21ee76a88cbc66e460081d323b9344d5771b1a02ed7e477f69ad326c6c9d7d44d154b2e3d2c9b23fb34241be5cdcbdb4137321ddd2"},"salt":"a7da6b991820460619aaf1fb647ebde7"}`
+const validEncryptedKey1 = `{"encryption":{"version":1,"methods":{"encrypt/AES256-CFB/SHA256":{}}},"payload":"e93e3e7ad3434055251f695865a13c11744b97e54cb7dee8f8fb40d1fb096b728f2a00606e7109f0720aacb15008b410cf2f92dd7989c2ff10b9712b6ef7d69ecdad1dccd2f1bddd127f0f0d87c79c3c062e03c2297614e2effa2fb1f4072d86df0dda4fc061"}`
+const validEncryptedPassphrase1 = `{"encryption":{"version":1,"methods":{"derive-key/PBKDF2/AES256":{"salt":"a7da6b991820460619aaf1fb647ebde7"},"encrypt/AES256-CFB/SHA256":{}}},"payload":"226ba6151c7751f2bd2ffcc2f666397f0cf8f6ea8ac2e336d7f3e07c8b8145f7e317f70a6bf4478b3c4469189ba1daccfe21ee76a88cbc66e460081d323b9344d5771b1a02ed7e477f69ad326c6c9d7d44d154b2e3d2c9b23fb34241be5cdcbdb4137321ddd2"}`
 
 const invalidConfigNoKey = `{"encrypt_remote_state":true,"methods":["encrypt/AES256-CFB/SHA256"],"parameters":{}}`
 
