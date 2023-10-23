@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/opentofu/opentofu/internal/states/statecrypto/cryptoconfig"
 	aes256state "github.com/opentofu/opentofu/internal/states/statecrypto/methods/aes256-cfb-sha256"
+	gocloud_secrets "github.com/opentofu/opentofu/internal/states/statecrypto/methods/gocloud-secrets"
 	pbkdf2aes256key "github.com/opentofu/opentofu/internal/states/statecrypto/methods/pbkdf2-passphrase-to-aes256key"
 	"log"
 )
@@ -24,6 +25,7 @@ func EnsureMethodsRegistered() {
 	err := registerMethods(
 		aes256state.Metadata,
 		pbkdf2aes256key.Metadata,
+		gocloud_secrets.Metadata,
 		// register other encryption/key derivation methods here
 	)
 
